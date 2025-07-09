@@ -1,0 +1,10 @@
+# Defina o comportamento padrão para todos os arquivos de texto
+* text=auto eol=lf
+
+# Para arquivos que devem ter CRLF (ex: arquivos de lote do Windows)
+# *.bat text eol=crlf
+# *.cmd text eol=crlf
+
+# Para arquivos que devem ser tratados como binários
+# *.png binary
+# *.jpg binary
