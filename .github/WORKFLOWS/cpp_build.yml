@@ -1,0 +1,58 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ "main", "develop" ] # Adapte para seus branches
+  pull_request:
+    branches: [ "main", "develop" ] # Adapte para seus branches
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: 'recursive' # Caso adicione submodulos depois
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake ninja-build # ninja é opcional mas bom
+
+    - name: Configure CMake
+      # Configura o CMake para usar Ninja e habilitar AVX.
+      # A flag -DCMAKE_BUILD_TYPE=Release pode ser adicionada para builds de release.
+      # A flag -DCMAKE_C_COMPILER e -DCMAKE_CXX_COMPILER pode ser usada para especificar compiladores.
+      run: cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Debug # Debug para mais infos em caso de erro
+
+    - name: Build
+      run: cmake --build build --config Debug # Ou Release
+
+    - name: Check AVX support in executable (Linux example)
+      run: |
+        echo "Checking for AVX instructions in the compiled executable..."
+        # Este é um teste muito básico. Uma análise mais profunda pode ser necessária.
+        # Ele procura por strings 'avx' nos símbolos ou no código desmontado.
+        # Pode gerar falsos positivos ou negativos.
+        if objdump -d build/cpu_llm_project | grep -q 'avx'; then
+          echo "AVX-related instructions potentially found."
+        else
+          echo "No obvious AVX-related instructions found via objdump. This check is basic."
+          # Você pode querer falhar o workflow aqui se AVX for estritamente necessário
+          # e este teste for confiável o suficiente para você.
+          # exit 1
+        fi
+        echo "Running ldd to check linked libraries (for informational purposes):"
+        ldd build/cpu_llm_project || true # '|| true' para não falhar se o ldd tiver problemas
+
+    - name: Test
+      working-directory: ./build
+      # Executa os testes definidos via CTest.
+      # O output é verboso para ajudar no debug em caso de falha.
+      run: ctest -C Debug --verbose # Ou Release
+
+    - name: Run executable (optional basic check)
+      run: |
+        ./build/cpu_llm_project arg1 arg2
+        echo "Executable finished."

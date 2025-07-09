@@ -1,0 +1,34 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+
+# User-specific files
+*.user
+*.DS_Store
+
+# IDE specific files
+.vscode/
+.idea/
+
+# Log files
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Test results
+test-results/
