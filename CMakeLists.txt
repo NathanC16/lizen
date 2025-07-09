@@ -15,9 +15,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib) # Para bibliotecas c
 # Para MSVC, /arch:AVX é geralmente ativado por padrão quando o hardware suporta,
 # mas pode ser especificado se necessário.
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx -mno-avx2")
     # Poderíamos adicionar -march=native, mas para garantir a compatibilidade AVX
-    # e não AVX2, -mavx é mais específico.
+    # e não AVX2, -mavx é mais específico e -mno-avx2 desabilita explicitamente o AVX2.
     # Para otimizações gerais:
     # set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
     # set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
@@ -116,13 +116,13 @@ set(LLAMA_BLIS OFF CACHE BOOL "Disable BLIS for llama.cpp" FORCE)
 # O compilador do nosso projeto já está configurado com -mavx.
 # Comentando temporariamente as flags explícitas de CPU para o llama.cpp para teste.
 # Deixar o llama.cpp usar sua própria detecção de hardware por enquanto.
-# set(LLAMA_AVX ON CACHE BOOL "Enable AVX for llama.cpp" FORCE)
-# set(LLAMA_AVX2 OFF CACHE BOOL "Disable AVX2 for llama.cpp" FORCE)
-# set(LLAMA_AVX512 OFF CACHE BOOL "Disable AVX512 for llama.cpp" FORCE)
-# set(LLAMA_FMA OFF CACHE BOOL "Disable FMA for llama.cpp" FORCE)
-# set(LLAMA_F16C OFF CACHE BOOL "Disable F16C for llama.cpp" FORCE)
-# set(LLAMA_ACCELERATE OFF CACHE BOOL "Disable Accelerate framework for llama.cpp" FORCE)
-# set(LLAMA_METAL OFF CACHE BOOL "Disable Metal for llama.cpp" FORCE)
+set(LLAMA_AVX ON CACHE BOOL "Enable AVX for llama.cpp" FORCE)
+set(LLAMA_AVX2 OFF CACHE BOOL "Disable AVX2 for llama.cpp" FORCE)
+set(LLAMA_AVX512 OFF CACHE BOOL "Disable AVX512 for llama.cpp" FORCE)
+set(LLAMA_FMA OFF CACHE BOOL "Disable FMA for llama.cpp" FORCE) # FMA é frequentemente associado com AVX2
+set(LLAMA_F16C OFF CACHE BOOL "Disable F16C for llama.cpp" FORCE) # F16C é frequentemente associado com AVX2/AVX-512
+# set(LLAMA_ACCELERATE OFF CACHE BOOL "Disable Accelerate framework for llama.cpp" FORCE) # Manter comentado a menos que especificamente necessário
+# set(LLAMA_METAL OFF CACHE BOOL "Disable Metal for llama.cpp" FORCE) # Manter comentado a menos que especificamente necessário
 
 FetchContent_MakeAvailable(llama_cpp)
 
