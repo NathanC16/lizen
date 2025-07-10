@@ -102,34 +102,51 @@ std::string LlmEngine::get_model_path() const {
     return model_path_;
 }
 
-std::string LlmEngine::predict(const std::string& prompt_text, int max_tokens_to_generate,
-                               float temp_param, int top_k_param, float top_p_param,
+// Atualizada a assinatura para incluir system_prompt e os parâmetros de amostragem
+std::string LlmEngine::predict(const std::string& user_prompt,
+                               const std::string& system_prompt, // Novo parâmetro
+                               int max_tokens_to_generate,
+                               float temp_param,
+                               int top_k_param,
+                               float top_p_param,
                                float repeat_penalty_param) {
     if (!is_model_loaded()) {
         return "[Error: Model not loaded]";
     }
 
-    // Marcar parâmetros de amostragem avançada como não utilizados
-    (void)max_tokens_to_generate; // Ignorado na implementação simplificada
-    (void)temp_param;
-    (void)top_k_param;
-    (void)top_p_param;
-    (void)repeat_penalty_param;
+    // Marcar parâmetros de amostragem avançada como não utilizados POR ENQUANTO (serão usados quando a amostragem for restaurada)
+    // (void)temp_param; // Será usado
+    // (void)top_k_param; // Será usado
+    // (void)top_p_param; // Será usado
+    // (void)repeat_penalty_param; // Será usado
+
+    std::string final_prompt_text = user_prompt;
+    if (!system_prompt.empty()) {
+        // Adicionar uma formatação simples para separar system prompt do user prompt.
+        // Modelos diferentes podem esperar formatos diferentes.
+        final_prompt_text = system_prompt + "\n\nUSER: " + user_prompt + "\nASSISTANT:";
+        // Ou, para alguns modelos, apenas concatenar ou usar estruturas específicas como <|system|>...<|user|>...
+        // Por agora, uma separação simples.
+        // std::cout << "Debug: Usando System Prompt. Prompt final antes de tokenizar:\n\"" << final_prompt_text << "\"" << std::endl;
+    }
+
 
     const int current_n_ctx = llama_n_ctx(ctx_);
     bool add_bos = llama_vocab_type(llama_model_get_vocab(model_)) == LLAMA_VOCAB_TYPE_SPM;
 
     std::vector<llama_token> prompt_tokens_vec(current_n_ctx);
+    // Tokenizar o final_prompt_text
     int n_prompt_tokens = llama_tokenize(
-        llama_model_get_vocab(model_), prompt_text.c_str(), (int32_t)prompt_text.length(),
+        llama_model_get_vocab(model_), final_prompt_text.c_str(), (int32_t)final_prompt_text.length(),
         prompt_tokens_vec.data(), (int32_t)prompt_tokens_vec.size(), add_bos, true
     );
 
     if (n_prompt_tokens < 0) {
         int required_size = -n_prompt_tokens;
         prompt_tokens_vec.resize(required_size);
+        // Corrigir para usar final_prompt_text na segunda tentativa também
         n_prompt_tokens = llama_tokenize(
-            llama_model_get_vocab(model_), prompt_text.c_str(), (int32_t)prompt_text.length(),
+            llama_model_get_vocab(model_), final_prompt_text.c_str(), (int32_t)final_prompt_text.length(),
             prompt_tokens_vec.data(), (int32_t)prompt_tokens_vec.size(), add_bos, true
         );
         if (n_prompt_tokens < 0) {
@@ -160,8 +177,8 @@ std::string LlmEngine::predict(const std::string& prompt_text, int max_tokens_to
     }
 
     if (batch.n_tokens == 0) {
-         if (!prompt_text.empty()) {
-             std::cerr << "LlmEngine::predict: Prompt tokenized to zero tokens, though prompt was not empty." << std::endl;
+         if (!user_prompt.empty()) { // Verificar user_prompt em vez de prompt_text
+             std::cerr << "LlmEngine::predict: Prompt tokenized to zero tokens, though user_prompt was not empty." << std::endl;
              llama_batch_free(batch);
              return "[Error: Prompt tokenized to zero tokens]";
          } else {

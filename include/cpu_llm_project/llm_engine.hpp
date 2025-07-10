@@ -28,7 +28,9 @@ public:
     void unload_model();
 
     // Gera texto a partir de um prompt.
-    std::string predict(const std::string& prompt,
+    // Os parâmetros de amostragem são incluídos para uso futuro quando a amostragem avançada for restaurada.
+    std::string predict(const std::string& user_prompt,
+                        const std::string& system_prompt = "", // System prompt opcional
                         int max_tokens = 128,
                         float temp = 0.8f,
                         int top_k = 40,

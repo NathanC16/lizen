@@ -8,6 +8,8 @@
 #include "cpu_llm_project/api_server.hpp" // Nosso servidor API
 #include <fstream>      // Para std::ifstream
 #include <sstream>      // Para std::ostringstream
+#include <map>          // Para std::map (usado para carregar .env)
+#include <algorithm>    // Para std::remove, std::isspace
 
 // Para checagem de AVX em tempo de execução (exemplo)
 #if defined(__GNUC__) || defined(__clang__)
@@ -58,6 +60,53 @@ bool isAvx2Supported() {
     std::cerr << "AVX2 check not implemented for this compiler." << std::endl;
     return false;
     #endif
+}
+
+// Função auxiliar para remover espaços em branco de uma string (início e fim)
+std::string trim_string(const std::string& str) {
+    const std::string whitespace = " \t\n\r\f\v";
+    size_t start = str.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return ""; // String vazia ou só com espaços
+    }
+    size_t end = str.find_last_not_of(whitespace);
+    return str.substr(start, end - start + 1);
+}
+
+// Função para carregar variáveis de um arquivo .env para um map
+std::map<std::string, std::string> load_env_file(const std::string& path = ".env") {
+    std::map<std::string, std::string> env_vars;
+    std::ifstream env_file(path);
+
+    if (!env_file.is_open()) {
+        // std::cout << "Info: Arquivo .env não encontrado em " << path << ". Usando padrões e argumentos CLI." << std::endl;
+        return env_vars; // Retorna mapa vazio se o arquivo não puder ser aberto
+    }
+
+    std::string line;
+    while (std::getline(env_file, line)) {
+        line = trim_string(line);
+        if (line.empty() || line[0] == '#') { // Ignorar linhas vazias e comentários
+            continue;
+        }
+
+        size_t delimiter_pos = line.find('=');
+        if (delimiter_pos != std::string::npos) {
+            std::string key = line.substr(0, delimiter_pos);
+            std::string value = line.substr(delimiter_pos + 1);
+            key = trim_string(key);
+            value = trim_string(value);
+
+            // Remover aspas do valor, se presentes
+            if (value.length() >= 2 && ((value.front() == '"' && value.back() == '"') || (value.front() == '\'' && value.back() == '\''))) {
+                value = value.substr(1, value.length() - 2);
+            }
+            env_vars[key] = value;
+        }
+    }
+    env_file.close();
+    // std::cout << "Info: Arquivo .env carregado." << std::endl;
+    return env_vars;
 }
 
 
@@ -112,15 +161,58 @@ int main(int argc, char* argv[]) {
     }
     model_file.close();
 
-    // Parâmetros com valores padrão
+    // Carregar configurações do arquivo .env
+    std::map<std::string, std::string> env_config = load_env_file();
+
+    // Parâmetros com valores padrão (que podem ser sobrescritos pelo .env e depois por args CLI)
     std::string host = "localhost";
     int port = 8080;
     int n_ctx = 2048;
-    int num_threads = 0; // 0 para LlmEngine usar lógica padrão (hardware_concurrency)
-    bool run_server_mode = false; // Por padrão, não roda o servidor (prefere interativo se poucos args)
+    int num_threads = 0;
+    // Parâmetros de amostragem e system prompt
+    float model_temperature = 0.8f;
+    int model_top_k = 40;
+    float model_top_p = 0.9f;
+    float model_repeat_penalty = 1.1f;
+    int max_tokens = 128; // Padrão para predict
+    std::string system_prompt = "Você é um assistente de IA prestativo e conciso.";
+    // std::string default_model_path_env = ""; // Não usado ativamente ainda
+
+
+    // Aplicar configurações do .env se presentes
+    if (env_config.count("API_HOST")) host = env_config["API_HOST"];
+    if (env_config.count("API_PORT")) {
+        try { port = std::stoi(env_config["API_PORT"]); } catch (...) { /* Ignorar erro, usar padrão */ }
+    }
+    if (env_config.count("MODEL_N_CTX")) {
+        try { n_ctx = std::stoi(env_config["MODEL_N_CTX"]); } catch (...) { /* Ignorar erro, usar padrão */ }
+    }
+    if (env_config.count("NUM_THREADS")) {
+        try { num_threads = std::stoi(env_config["NUM_THREADS"]); } catch (...) { /* Ignorar erro, usar padrão */ }
+    }
+    if (env_config.count("MODEL_TEMPERATURE")) {
+        try { model_temperature = std::stof(env_config["MODEL_TEMPERATURE"]); } catch (...) { /* Ignorar erro */ }
+    }
+    if (env_config.count("MODEL_TOP_K")) {
+        try { model_top_k = std::stoi(env_config["MODEL_TOP_K"]); } catch (...) { /* Ignorar erro */ }
+    }
+    if (env_config.count("MODEL_TOP_P")) {
+        try { model_top_p = std::stof(env_config["MODEL_TOP_P"]); } catch (...) { /* Ignorar erro */ }
+    }
+    if (env_config.count("MODEL_REPEAT_PENALTY")) {
+        try { model_repeat_penalty = std::stof(env_config["MODEL_REPEAT_PENALTY"]); } catch (...) { /* Ignorar erro */ }
+    }
+    if (env_config.count("SYSTEM_PROMPT")) system_prompt = env_config["SYSTEM_PROMPT"];
+    // if (env_config.count("DEFAULT_MODEL_PATH")) default_model_path_env = env_config["DEFAULT_MODEL_PATH"];
+
+    // Nota: MAX_TOKENS_TO_GENERATE não está sendo carregado do .env por enquanto,
+    // mas poderia ser adicionado se necessário para o modo interativo.
+    // A API tem seu próprio parâmetro max_tokens.
+
+    bool run_server_mode = false;
     bool interactive_flag_explicitly_passed = false;
 
-    // Analisar argumentos da linha de comando
+    // Analisar argumentos da linha de comando (eles sobrescrevem o .env)
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--interactive") {
@@ -249,7 +341,20 @@ int main(int argc, char* argv[]) {
                 break;
             }
 
+            // Comandos interativos com //
+            if (line.rfind("//", 0) == 0) { // Verifica se a linha começa com "//"
+                std::string command = line.substr(2); // Extrai o comando
+                if (command == "sair" || command == "exit" || command == "quit") {
+                    break;
+                } else {
+                    std::cout << "Comando desconhecido: " << command << std::endl;
+                }
+                continue; // Volta para o início do loop para o próximo prompt/comando
+            }
+
+            // Comandos de saída legados (sem //) - podem ser removidos gradualmente
             if (line == "sair" || line == "exit" || line == "quit") {
+                std::cout << "Usando comando de saída legado. Considere usar '//sair' no futuro." << std::endl;
                 break;
             }
 
@@ -258,9 +363,14 @@ int main(int argc, char* argv[]) {
             }
 
             std::cout << "Processando..." << std::endl;
-            // Usar parâmetros padrão para a predição no modo interativo por enquanto
-            // A função predict atualmente retorna uma mensagem estática.
-            std::string response = engine.predict(line);
+            // Passar o system_prompt e os parâmetros de amostragem carregados/padrão
+            std::string response = engine.predict(line,
+                                                  system_prompt,
+                                                  max_tokens, // Usar o padrão de predict ou carregar do .env
+                                                  model_temperature,
+                                                  model_top_k,
+                                                  model_top_p,
+                                                  model_repeat_penalty);
             std::cout << "Resposta: " << response << std::endl;
         }
         std::cout << "CPU LLM Project - Modo interativo encerrado." << std::endl;

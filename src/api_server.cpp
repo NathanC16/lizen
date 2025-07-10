@@ -131,9 +131,21 @@ void ApiServer::post_generate(const httplib::Request& req, httplib::Response& re
     float top_p = request_json.value("top_p", 0.9f);
     float repeat_penalty = request_json.value("repeat_penalty", 1.1f);
     // bool stream = request_json.value("stream", false); // Streaming não implementado ainda
+    std::string system_prompt_req = request_json.value("system_prompt", ""); // Novo campo opcional
 
     std::cout << "ApiServer::post_generate: Received prompt: \"" << prompt << "\"" << std::endl;
-    std::string generated_text = engine_.predict(prompt, max_tokens, temp, top_k, top_p, repeat_penalty);
+    if (!system_prompt_req.empty()) {
+        std::cout << "ApiServer::post_generate: Using system prompt: \"" << system_prompt_req << "\"" << std::endl;
+    }
+    // Passar o system_prompt para engine_.predict()
+    // Se system_prompt_req estiver vazio, o LlmEngine usará seu próprio padrão (se houver) ou nada.
+    std::string generated_text = engine_.predict(prompt,
+                                                 system_prompt_req,
+                                                 max_tokens,
+                                                 temp,
+                                                 top_k,
+                                                 top_p,
+                                                 repeat_penalty);
     std::cout << "ApiServer::post_generate: Generated response: \"" << generated_text << "\"" << std::endl;
 
     json response_data;
