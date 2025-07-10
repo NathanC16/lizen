@@ -367,12 +367,6 @@ int main(int argc, char* argv[]) {
                 continue; // Volta para o início do loop para o próximo prompt/comando
             }
 
-            // Comandos de saída legados (sem //) - podem ser removidos gradualmente
-            if (line == "sair" || line == "exit" || line == "quit") {
-                std::cout << "Usando comando de saída legado. Considere usar '//sair' no futuro." << std::endl;
-                break;
-            }
-
             if (line.empty()) {
                 continue;
             }
