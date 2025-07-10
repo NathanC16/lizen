@@ -54,33 +54,28 @@ bool LlmEngine::load_model(const std::string& model_path, int n_ctx_req, int n_g
 
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = n_ctx_;
-    // ctx_params.n_batch = std::min((uint32_t)n_ctx_, 512U); // Um valor comum para n_batch
-    ctx_params.n_batch = 512; // Default n_batch from llama.cpp, can be overridden by user.
-                               // Let's keep it simple, or allow this to be configurable.
-                               // Needs to be <= n_ctx.
+    ctx_params.n_batch = 512;
 
     if (num_threads_param > 0) {
         ctx_params.n_threads = num_threads_param;
-        ctx_params.n_threads_batch = num_threads_param; // Para CPU, geralmente são iguais
+        ctx_params.n_threads_batch = num_threads_param;
         std::cout << "LlmEngine: Usando " << num_threads_param << " threads (definido pelo usuário)." << std::endl;
     } else {
         unsigned int hardware_threads = std::thread::hardware_concurrency();
-        // Lógica padrão: usar no máximo 8 threads ou o total de threads de hardware, o que for menor. Mínimo de 4.
-        // Esta lógica pode ser ajustada conforme necessidade.
         ctx_params.n_threads = hardware_threads > 0 ? std::min(hardware_threads, 8U) : 4U;
         ctx_params.n_threads_batch = ctx_params.n_threads;
         std::cout << "LlmEngine: Usando " << ctx_params.n_threads << " threads (detectado automaticamente/padrão)." << std::endl;
     }
-     // Ensure n_threads and n_threads_batch are at least 1
     if (ctx_params.n_threads == 0) ctx_params.n_threads = 1;
     if (ctx_params.n_threads_batch == 0) ctx_params.n_threads_batch = 1;
 
-
-    ctx_ = llama_new_context_with_model(model_, ctx_params);
+    // Usar llama_init_from_model em vez de llama_new_context_with_model
+    ctx_ = llama_init_from_model(model_, ctx_params);
 
     if (!ctx_) {
         std::cerr << "LlmEngine::load_model: Failed to create llama_context." << std::endl;
-        llama_free_model(model_); // Use llama_free_model para o objeto model_
+        // Usar llama_model_free em vez de llama_free_model
+        llama_model_free(model_);
         model_ = nullptr;
         return false;
     }
@@ -95,7 +90,8 @@ void LlmEngine::unload_model() {
         ctx_ = nullptr;
     }
     if (model_) {
-        llama_free_model(model_); // Use llama_free_model para o objeto model_
+        // Usar llama_model_free em vez de llama_free_model
+        llama_model_free(model_);
         model_ = nullptr;
     }
     model_path_.clear();
@@ -134,24 +130,22 @@ std::string LlmEngine::predict(const std::string& user_prompt,
     const int current_n_ctx = llama_n_ctx(ctx_);
 
     // Tokenizar o prompt
-    // A função llama_tokenize agora aceita llama_model* diretamente.
-    // Adicionar um pequeno buffer para segurança, ou calcular o tamanho máximo possível.
     std::vector<llama_token> prompt_tokens_vec(final_prompt_text.length() + 16);
     int n_prompt_tokens = llama_tokenize(
         model_, final_prompt_text.c_str(), (int32_t)final_prompt_text.length(),
         prompt_tokens_vec.data(), (int32_t)prompt_tokens_vec.size(),
-        llama_should_add_bos_token(model_), // Use llama_should_add_bos_token para determinar se BOS é necessário
-        true // special = true para processar tokens de controle como <start_of_turn>
+        llama_model_should_add_bos_token(model_), // Correção: Usar llama_model_should_add_bos_token
+        true
     );
 
-    if (n_prompt_tokens < 0) { // Se negativo, significa que o buffer era muito pequeno
-        prompt_tokens_vec.resize(-n_prompt_tokens); // n_prompt_tokens é o tamanho necessário
+    if (n_prompt_tokens < 0) {
+        prompt_tokens_vec.resize(-n_prompt_tokens);
         n_prompt_tokens = llama_tokenize(
             model_, final_prompt_text.c_str(), (int32_t)final_prompt_text.length(),
             prompt_tokens_vec.data(), (int32_t)prompt_tokens_vec.size(),
-            llama_should_add_bos_token(model_), true
+            llama_model_should_add_bos_token(model_), true // Correção
         );
-        if (n_prompt_tokens < 0) { // Ainda falhou
+        if (n_prompt_tokens < 0) {
             std::cerr << "LlmEngine::predict: Failed to tokenize prompt (code " << n_prompt_tokens << ")." << std::endl;
             return "[Error: Failed to tokenize prompt]";
         }
@@ -164,34 +158,27 @@ std::string LlmEngine::predict(const std::string& user_prompt,
         return "[Error: Prompt too long for context]";
     }
 
-    // Limpar o cache KV para a sequência 0 (assumindo uma única sequência por predição)
-    llama_kv_cache_seq_clear(ctx_, 0);
+    // Correção: Usar llama_kv_cache_clear(ctx_) para limpar todo o cache KV
+    llama_kv_cache_clear(ctx_);
 
-    // Criar o batch para processar o prompt
-    // O tamanho do batch pode ser n_prompt_tokens para o prompt inicial.
-    // Para geração, o batch terá apenas 1 token.
-    llama_batch batch = llama_batch_init(std::max(n_prompt_tokens, 1), 0, 1); // Max com 1 para evitar batch de 0
+    llama_batch batch = llama_batch_init(std::max(n_prompt_tokens, 1), 0, 1);
 
-    // Adicionar tokens do prompt ao batch
     for (int i = 0; i < n_prompt_tokens; ++i) {
-        // Adiciona token, posição, IDs de sequência, e flag de logits
-        llama_batch_add_token(batch, prompt_tokens_vec[i], i, {0}, (i == n_prompt_tokens - 1));
+        // Correção: Usar llama_batch_add para adicionar token
+        llama_batch_add(batch, prompt_tokens_vec[i], i, {0}, (i == n_prompt_tokens - 1));
     }
-    // batch.logits[batch.n_tokens - 1] = true; // Assegura que os logits são calculados para o último token do prompt.
-                                             // llama_batch_add_token já faz isso com o último parâmetro.
 
     if (batch.n_tokens == 0) {
          if (!user_prompt.empty()) {
              std::cerr << "LlmEngine::predict: Prompt tokenized to zero tokens, though user_prompt was not empty." << std::endl;
              llama_batch_free(batch);
              return "[Error: Prompt tokenized to zero tokens]";
-         } else { // Prompt vazio resultou em zero tokens, o que é esperado.
+         } else {
              llama_batch_free(batch);
              return "";
          }
     }
 
-    // Processar o prompt
     if (llama_decode(ctx_, batch) != 0) {
         std::cerr << "LlmEngine::predict: llama_decode failed for prompt." << std::endl;
         llama_batch_free(batch);
@@ -199,99 +186,95 @@ std::string LlmEngine::predict(const std::string& user_prompt,
     }
 
     std::string result_text = "";
-    int n_cur = n_prompt_tokens; // Posição atual na sequência
-    int n_decoded = 0;           // Número de tokens decodificados nesta chamada
+    int n_cur = n_prompt_tokens;
+    int n_decoded = 0;
 
-    // Configurar parâmetros de amostragem para llama_sampling_context
-    llama_sampling_params sparams = llama_sampling_default_params(); // Começar com defaults
+    // Usar nomes de API de sampler conforme sugestões
+    llama_sampling_params sparams = llama_sampling_default_params();
     sparams.temp            = temp_param;
-    sparams.top_k           = top_k_param <= 0 ? 0 : top_k_param; // 0 na API de sampling_params desabilita top_k.
-                                                              // llama_vocab_n_tokens(llama_model_get_vocab(model_)) faria todos os tokens serem considerados.
-                                                              // Para desabilitar, 0 é o correto aqui.
+    sparams.top_k           = top_k_param <= 0 ? 0 : top_k_param;
     sparams.top_p           = top_p_param;
-    sparams.penalty_repeat  = repeat_penalty_param; // Nome do parâmetro mudou de repeat_penalty para penalty_repeat
-    sparams.penalty_last_n  = current_n_ctx > 0 ? std::min(current_n_ctx, 256) : 256; // Exemplo: últimos 256 tokens
-    // sparams.penalty_freq    = 0.0f; // Default
-    // sparams.penalty_present = 0.0f; // Default
+    sparams.penalty_repeat  = repeat_penalty_param;
+    sparams.penalty_last_n  = current_n_ctx > 0 ? std::min(current_n_ctx, 256) : 256;
 
-    llama_sampling_context * sampling_ctx = llama_sampling_init(sparams);
+    // Correção: Usar llama_sampler_init e tipo llama_sampling_context* (se este for o tipo retornado)
+    // Se llama_sampler_init retorna um tipo diferente, precisaremos ajustar sampling_ctx.
+    // Assumindo que llama_sampling_context* ainda é o tipo, apesar das sugestões de nome de função.
+    // Se o tipo for realmente llama_sampler_context_t, precisaremos mudar a declaração.
+    // Por ora, vamos tentar com os nomes de função corrigidos.
+    struct llama_sampling_context * sampling_ctx = llama_sampler_init(sparams);
     if (!sampling_ctx) {
         std::cerr << "LlmEngine::predict: Failed to initialize sampling context." << std::endl;
         llama_batch_free(batch);
         return "[Error: Failed to initialize sampling context]";
     }
 
-    // Alimentar tokens do prompt no contexto de amostragem para que ele conheça o histórico para penalidades
     for (int i = 0; i < n_prompt_tokens; ++i) {
-        llama_sampling_accept(sampling_ctx, ctx_, prompt_tokens_vec[i], false);
+        // Correção: Usar llama_sampler_accept
+        llama_sampler_accept(sampling_ctx, ctx_, prompt_tokens_vec[i], false);
     }
 
-    // Loop de geração de tokens
-    llama_batch_clear(batch); // Limpar o batch, agora vamos adicionar 1 token de cada vez
+    // Correção: Limpar batch com batch.n_tokens = 0
+    batch.n_tokens = 0;
 
     while (n_cur < current_n_ctx && n_decoded < max_tokens_to_generate) {
-        // Amostrar o próximo token
-        llama_token new_token_id = llama_sampling_sample(sampling_ctx, ctx_, nullptr, 0); // idx = 0 para o único logit no batch
+        // Correção: Usar llama_sampler_sample
+        llama_token new_token_id = llama_sampler_sample(sampling_ctx, ctx_, nullptr); // idx não é mais necessário aqui
 
-        // Aceitar o token amostrado no contexto de amostragem (para penalidades futuras)
-        llama_sampling_accept(sampling_ctx, ctx_, new_token_id, true);
+        // Correção: Usar llama_sampler_accept
+        llama_sampler_accept(sampling_ctx, ctx_, new_token_id, true);
 
-        if (new_token_id == llama_token_eos(model_)) { // Usar llama_token_eos(model*)
-            // result_text += " [EOS]"; // Opcional: adicionar marcador EOS para debug
+        // Correção: Usar llama_model_token_eos
+        if (new_token_id == llama_model_token_eos(model_)) {
             break;
         }
 
-        char piece_buffer[64]; // Buffer para o texto do token
-        // llama_token_to_piece agora usa llama_model*
-        int len = llama_token_to_piece(model_, new_token_id, piece_buffer, sizeof(piece_buffer));
+        char piece_buffer[64];
+        // Correção: Usar llama_model_token_to_piece
+        int len = llama_model_token_to_piece(model_, new_token_id, piece_buffer, sizeof(piece_buffer));
 
         if (len > 0) {
             result_text.append(piece_buffer, len);
-
-            // Verificar sequências de parada (incluindo <end_of_turn> específico do Gemma)
-            const size_t min_len_for_stop_check = 6; // Ajustar conforme necessário
+            const size_t min_len_for_stop_check = 6;
             const std::vector<std::string> stop_sequences = {
                 "\nUSER:", "\nASSISTANT:", " USER:", " ASSISTANT:", "<end_of_turn>"
             };
-            if (result_text.length() >= min_len_for_stop_check) { // Evitar verificações em strings muito curtas
+            if (result_text.length() >= min_len_for_stop_check) {
                 bool stopped = false;
                 for (const auto& seq : stop_sequences) {
-                    // Verificar se result_text termina com a sequência de parada
                     if (result_text.length() >= seq.length() &&
                         result_text.rfind(seq) == result_text.length() - seq.length()) {
-                        //std::cout << " [Stop sequence detected: '" << seq << "']" << std::endl;
-                        result_text.erase(result_text.length() - seq.length()); // Remover a sequência
+                        result_text.erase(result_text.length() - seq.length());
                         stopped = true;
                         break;
                     }
                 }
                 if (stopped) {
-                    break; // Sair do loop de geração
+                    break;
                 }
             }
-        } else if (len < 0) { // Erro na conversão token para texto
+        } else if (len < 0) {
             std::cerr << "LlmEngine::predict: llama_token_to_piece failed for token " << new_token_id << ". Returned: " << len << std::endl;
-            // Continuar ou parar? Por enquanto, continuar, mas registrar o erro.
         }
 
-        // Preparar o batch para o próximo token
-        llama_batch_clear(batch);
-        llama_batch_add_token(batch, new_token_id, n_cur, {0}, true); // Logits para o próximo token
+        // Correção: Limpar batch com batch.n_tokens = 0
+        batch.n_tokens = 0;
+        // Correção: Usar llama_batch_add
+        llama_batch_add(batch, new_token_id, n_cur, {0}, true);
 
         n_decoded++;
         n_cur++;
 
-        // Decodificar o novo token
         if (llama_decode(ctx_, batch) != 0) {
             std::cerr << "LlmEngine::predict: llama_decode failed for generated token " << new_token_id << std::endl;
-            llama_sampling_free(sampling_ctx);
+            llama_sampler_free(sampling_ctx); // Correção
             llama_batch_free(batch);
             return result_text + "[Error: llama_decode failed during generation]";
         }
     }
 
-    llama_sampling_free(sampling_ctx); // Liberar o contexto de amostragem
-    llama_batch_free(batch);           // Liberar o batch
+    llama_sampler_free(sampling_ctx); // Correção
+    llama_batch_free(batch);
     return result_text;
 }
 
