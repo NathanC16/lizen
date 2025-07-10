@@ -11,6 +11,7 @@
 #include <map>          // Para std::map (usado para carregar .env)
 #include <algorithm>    // Para std::remove, std::isspace
 #include "yaml-cpp/yaml.h" // Para parsing de YAML
+#include <cstdlib>     // Para getenv
 
 // Para checagem de AVX em tempo de execução (exemplo)
 #if defined(__GNUC__) || defined(__clang__)
@@ -262,6 +263,18 @@ int main(int argc, char* argv[]) {
         std::cerr << "Erro: Caminho para o modelo GGUF não especificado (nem via YAML, nem como argumento direto)." << std::endl;
         return 1;
     }
+
+    // Expandir ~ para o diretório home do usuário, se aplicável
+    if (!config.model_gguf_path.empty() && config.model_gguf_path[0] == '~') {
+        const char* home_dir = getenv("HOME");
+        if (home_dir) {
+            config.model_gguf_path.replace(0, 1, home_dir);
+            std::cout << "Info: Caminho do modelo expandido para: " << config.model_gguf_path << std::endl;
+        } else {
+            std::cerr << "Aviso: Não foi possível expandir '~' no caminho do modelo porque a variável de ambiente HOME não está definida. Tentando usar o caminho como está." << std::endl;
+        }
+    }
+
     std::ifstream model_check_file(config.model_gguf_path);
     if (!model_check_file.good()) {
         std::cerr << "Erro: Não foi possível abrir o arquivo do modelo GGUF em: " << config.model_gguf_path << std::endl;
