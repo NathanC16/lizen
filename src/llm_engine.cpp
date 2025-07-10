@@ -120,15 +120,27 @@ std::string LlmEngine::predict(const std::string& user_prompt,
     // (void)top_p_param; // Será usado
     // (void)repeat_penalty_param; // Será usado
 
-    std::string final_prompt_text = user_prompt;
+    // Formato de prompt específico para Gemma
+    // Documentação de referência: https://ai.google.dev/gemma/docs/formatting
+    std::ostringstream oss_prompt;
     if (!system_prompt.empty()) {
-        // Adicionar uma formatação simples para separar system prompt do user prompt.
-        // Modelos diferentes podem esperar formatos diferentes.
-        final_prompt_text = system_prompt + "\n\nUSER: " + user_prompt + "\nASSISTANT:";
-        // Ou, para alguns modelos, apenas concatenar ou usar estruturas específicas como <|system|>...<|user|>...
-        // Por agora, uma separação simples.
-        // std::cout << "Debug: Usando System Prompt. Prompt final antes de tokenizar:\n\"" << final_prompt_text << "\"" << std::endl;
+        // Embora Gemma não tenha um "system prompt" formal como outros modelos,
+        // é comum prefixar instruções gerais antes do primeiro turno do usuário.
+        // Poderíamos envolvê-lo em tokens de modelo se quiséssemos que parecesse uma instrução do sistema,
+        // mas para Gemma, geralmente é apenas texto antes do primeiro <start_of_turn>user.
+        // Vamos mantê-lo simples por enquanto e apenas prefixá-lo.
+        // Outra abordagem seria:
+        // oss_prompt << "<start_of_turn>model\n" << system_prompt << "<end_of_turn>\n";
+        // Mas isso pode ser interpretado como um turno de diálogo do modelo.
+        // Por enquanto, apenas texto simples antes do diálogo.
+        oss_prompt << system_prompt << "\n"; // Adiciona uma nova linha para separação clara
     }
+    oss_prompt << "<start_of_turn>user\n"
+               << user_prompt << "<end_of_turn>\n"
+               << "<start_of_turn>model"; // O modelo deve começar a gerar a partir daqui
+
+    std::string final_prompt_text = oss_prompt.str();
+    // std::cout << "Debug: Prompt Formatado para Gemma:\n\"" << final_prompt_text << "\"" << std::endl;
 
 
     const int current_n_ctx = llama_n_ctx(ctx_);
@@ -232,38 +244,23 @@ std::string LlmEngine::predict(const std::string& user_prompt,
         }
         llama_token_data_array candidates_p = { candidates_vec_loop.data(), candidates_vec_loop.size(), false };
 
-        // Amostragem Manual (Max Logit) para garantir a compilação
-        llama_token new_token_id = candidates_p.data[0].id;
-        float max_logit = candidates_p.data[0].logit;
-        if (candidates_p.size > 0) { // Certificar que candidates_p.data não é nulo e size > 0
-            for (size_t i = 1; i < candidates_p.size; ++i) {
-                if (candidates_p.data[i].logit > max_logit) {
-                    max_logit = candidates_p.data[i].logit;
-                    new_token_id = candidates_p.data[i].id;
-                }
-            }
-        } else if (n_vocab > 0) { // Se não houver candidatos (improvável), mas n_vocab > 0
-             new_token_id = llama_token_eos(llama_model_get_vocab(model_)); // Fallback para EOS
-             std::cerr << "Aviso: Array de candidatos vazio, usando EOS como fallback." << std::endl;
-        } else { // Caso extremo: vocabulário vazio ou erro
-            std::cerr << "Erro: Vocabulário vazio ou candidates_p.data é nulo." << std::endl;
-            // Poderia lançar uma exceção ou retornar um erro aqui
-            // Por enquanto, apenas quebrar o loop pode ser o mais seguro se chegarmos aqui.
-            new_token_id = llama_token_eos(llama_model_get_vocab(model_));
+        // Restaurar lógica de amostragem avançada
+        if (!penalty_tokens.empty()) {
+             llama_sample_repetition_penalty(ctx_, &candidates_p,
+                                          penalty_tokens.data(),
+                                          penalty_tokens.size(),
+                                          repeat_penalty_param);
         }
-        // A chamada original para llama_sample_token_greedy foi removida.
-        // A lógica de amostragem completa está comentada abaixo para referência futura.
-        // if (!penalty_tokens.empty()) {
-        //      llama_sample_repetition_penalty(ctx_, &candidates_p,
-        //                                   penalty_tokens.data(),
-        //                                   penalty_tokens.size(),
-        //                                   repeat_penalty_param);
-        // }
-        // llama_sample_softmax(&candidates_p);
-        // llama_sample_top_k(&candidates_p, top_k_param <= 0 ? 0 : top_k_param, (size_t)1);
-        // llama_sample_top_p(&candidates_p, top_p_param, (size_t)1);
-        // llama_sample_temp(&candidates_p, temp_param);
-        // new_token_id = llama_sample_token(ctx_, &candidates_p);
+        llama_sample_top_k(ctx_, &candidates_p, top_k_param <= 0 ? llama_vocab_n_tokens(llama_model_get_vocab(model_)) : top_k_param, 1);
+        llama_sample_top_p(ctx_, &candidates_p, top_p_param, 1);
+        llama_sample_temp(ctx_, &candidates_p, temp_param);
+        // A função llama_sample_token_greedy foi removida em versões mais recentes de llama.cpp
+        // Em vez disso, usa-se llama_sample_token que aplica a amostragem definida anteriormente.
+        // Se llama_sample_token_greedy fosse estritamente necessária, seria preciso verificar a versão do llama.cpp
+        // e possivelmente reimplementar uma lógica greedy simples se as outras funções de sample modificam os logits para softmax.
+        // Por agora, vamos usar llama_sample_token, que é o padrão para aplicar as transformações de amostragem.
+        llama_token new_token_id = llama_sample_token(ctx_, &candidates_p);
+
 
         penalty_tokens.push_back(new_token_id);
         if (penalty_tokens.size() > penalty_max_size) {
