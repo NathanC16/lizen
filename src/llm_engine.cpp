@@ -31,7 +31,8 @@ LlmEngine::~LlmEngine() {
     std::cout << "LlmEngine: Destroyed. Llama backend freed." << std::endl;
 }
 
-bool LlmEngine::load_model(const std::string& model_path, int n_ctx_req, int n_gpu_layers) {
+// Definição da função load_model atualizada para incluir num_threads
+bool LlmEngine::load_model(const std::string& model_path, int n_ctx_req, int n_gpu_layers, int num_threads_param) {
     if (is_model_loaded()) {
         std::cerr << "LlmEngine::load_model: Model already loaded. Unload first." << std::endl;
         return false;
@@ -54,9 +55,17 @@ bool LlmEngine::load_model(const std::string& model_path, int n_ctx_req, int n_g
     ctx_params.n_ctx = n_ctx_;
     ctx_params.n_batch = std::min((uint32_t)n_ctx_, 512U);
 
-    unsigned int n_threads = std::thread::hardware_concurrency();
-    ctx_params.n_threads = n_threads > 0 ? std::min(n_threads, 8U) : 4U;
-    ctx_params.n_threads_batch = ctx_params.n_threads;
+    if (num_threads_param > 0) {
+        ctx_params.n_threads = num_threads_param;
+        ctx_params.n_threads_batch = num_threads_param; // Pode ser diferente, mas geralmente é o mesmo para CPU
+        std::cout << "LlmEngine: Usando " << num_threads_param << " threads (definido pelo usuário)." << std::endl;
+    } else {
+        unsigned int hardware_threads = std::thread::hardware_concurrency();
+        // Lógica padrão: usar no máximo 8 threads ou o total de threads de hardware, o que for menor. Mínimo de 4.
+        ctx_params.n_threads = hardware_threads > 0 ? std::min(hardware_threads, 8U) : 4U;
+        ctx_params.n_threads_batch = ctx_params.n_threads;
+        std::cout << "LlmEngine: Usando " << ctx_params.n_threads << " threads (detectado automaticamente/padrão)." << std::endl;
+    }
 
     ctx_ = llama_init_from_model(model_, ctx_params);
 

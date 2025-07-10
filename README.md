@@ -39,26 +39,34 @@ Este projeto visa ser uma alternativa ao Ollama, otimizado para inferência efic
 
 ## Como Executar
 
-O `cpu_llm_project` pode ser executado em dois modos principais: como um servidor API HTTP ou em modo interativo de linha de comando (CLI).
+O `cpu_llm_project` pode ser executado em dois modos principais: como um servidor API HTTP ou em modo interativo de linha de comando (CLI). Todos os argumentos de linha de comando após o caminho do modelo são opcionais e podem ser fornecidos como flags nomeadas.
+
+**Argumentos Comuns (Opcionais):**
+
+*   `--host <hostname>`: Define o host para o servidor API (padrão: `localhost`). Usado apenas no modo servidor.
+*   `--port <numero_porta>`: Define a porta para o servidor API (padrão: `8080`). Usado apenas no modo servidor.
+*   `--n_ctx <numero>`: Define o tamanho do contexto para o modelo (padrão: `2048`).
+*   `--threads <numero>`: Define o número de threads que o motor LLM deve usar (padrão: automático, baseado nos núcleos da CPU com um limite superior). Um valor `<= 0` usa o padrão.
+*   `--interactive`: Força o programa a iniciar em modo interativo CLI, mesmo que argumentos de host/porta sejam fornecidos.
 
 ### Modo Servidor API
 
-Este modo inicia um servidor HTTP que expõe endpoints para interagir com o modelo LLM.
+Este modo inicia um servidor HTTP que expõe endpoints para interagir com o modelo LLM. Ele é ativado se argumentos como `--host` ou `--port` são fornecidos, ou se argumentos posicionais para host/porta são detectados e a flag `--interactive` não está presente.
 
-**Comando:**
+**Comando (Exemplos):**
 ```bash
-./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf [host] [porta] [n_ctx]
+# Usando valores padrão para host/porta/n_ctx/threads
+./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf --host 0.0.0.0 --port 8008
+
+# Especificando todos os parâmetros
+./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf --host localhost --port 8080 --n_ctx 4096 --threads 4
+
+# Argumentos posicionais para host e porta (menos recomendado se misturar com muitas flags)
+./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf localhost 8081
 ```
 *   `/caminho/para/seu/modelo.gguf`: **Obrigatório.** Caminho para o arquivo do modelo GGUF.
-*   `[host]`: Opcional. Host para o servidor (padrão: `localhost`).
-*   `[porta]`: Opcional. Porta para o servidor (padrão: `8080`).
-*   `[n_ctx]`: Opcional. Tamanho do contexto para o modelo (padrão: `2048`).
 
-**Exemplo:**
-```bash
-./build/bin/cpu_llm_project ./models/phi-2.Q4_K_M.gguf localhost 8080
-```
-O servidor começará a escutar em `http://localhost:8080` (ou no host/porta especificados). Consulte a seção "Como Usar a API" para detalhes sobre os endpoints.
+O servidor começará a escutar no host e porta especificados. Consulte a seção "Como Usar a API" para detalhes sobre os endpoints.
 
 ### Modo Interativo (CLI)
 
@@ -66,18 +74,23 @@ Este modo permite que você converse diretamente com o modelo através da linha 
 
 **Como Iniciar:**
 
-Existem duas maneiras de iniciar o modo interativo:
+O modo interativo é ativado se:
+1.  A flag `--interactive` é fornecida.
+2.  Nenhum argumento de modo servidor (como `--host` ou `--port`) é fornecido, e apenas o caminho do modelo é passado.
 
-1.  **Padrão (sem argumentos de servidor):** Se você fornecer apenas o caminho do modelo, o programa iniciará em modo interativo por padrão.
-    ```bash
-    ./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf
-    ```
+**Exemplos de Comando:**
+```bash
+# Modo interativo padrão (apenas modelo)
+./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf
 
-2.  **Flag Explícita:** Você pode usar a flag `--interactive`.
-    ```bash
-    ./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf --interactive
-    ```
-    *   Neste caso, quaisquer argumentos de `[host]`, `[porta]` ou `[n_ctx]` que possam seguir a flag `--interactive` serão ignorados.
+# Modo interativo explícito
+./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf --interactive
+
+# Modo interativo com número de threads customizado
+./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf --threads 8 --interactive
+# ou
+./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf --interactive --threads 8
+```
 
 **Como Usar:**
 
