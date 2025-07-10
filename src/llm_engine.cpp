@@ -129,7 +129,7 @@ std::string LlmEngine::predict(const std::string& user_prompt,
     int n_prompt_tokens = llama_tokenize(
         model_, final_prompt_text.c_str(), (int32_t)final_prompt_text.length(),
         prompt_tokens_vec.data(), (int32_t)prompt_tokens_vec.size(),
-        llama_vocab_get_add_bos(llama_get_model_vocab(model_)), // Correção BOS
+        llama_vocab_get_add_bos(llama_get_vocab(model_)), // Correção BOS
         true
     );
 
@@ -138,7 +138,7 @@ std::string LlmEngine::predict(const std::string& user_prompt,
         n_prompt_tokens = llama_tokenize(
             model_, final_prompt_text.c_str(), (int32_t)final_prompt_text.length(),
             prompt_tokens_vec.data(), (int32_t)prompt_tokens_vec.size(),
-            llama_vocab_get_add_bos(llama_get_model_vocab(model_)), true // Correção BOS
+            llama_vocab_get_add_bos(llama_get_vocab(model_)), true // Correção BOS
         );
         if (n_prompt_tokens < 0) {
             std::cerr << "LlmEngine::predict: Failed to tokenize prompt (code " << n_prompt_tokens << ")." << std::endl;
@@ -153,7 +153,7 @@ std::string LlmEngine::predict(const std::string& user_prompt,
         return "[Error: Prompt too long for context]";
     }
 
-    llama_kv_self_clear(ctx_); // Correção KV Cache
+    llama_kv_cache_clear(ctx_); // Correção KV Cache (era llama_kv_self_clear, mas esta é mais comum)
 
     llama_batch batch = llama_batch_init(std::max(n_prompt_tokens, 1), 0, 1);
 
@@ -187,15 +187,14 @@ std::string LlmEngine::predict(const std::string& user_prompt,
     int n_cur = n_prompt_tokens;
     int n_decoded = 0;
 
-    // Correção: Usar llama_sampler_params
-    llama_sampler_params sparams = llama_sampler_default_params();
+    // Reverter para llama_sampling_params, pois llama_sampler_params não foi encontrado
+    llama_sampling_params sparams = llama_sampling_default_params();
     sparams.temp            = temp_param;
     sparams.top_k           = top_k_param <= 0 ? 0 : top_k_param;
     sparams.top_p           = top_p_param;
     sparams.penalty_repeat  = repeat_penalty_param;
     sparams.penalty_last_n  = current_n_ctx > 0 ? std::min(current_n_ctx, 256) : 256;
 
-    // Correção: Usar struct llama_sampler e funções com prefixo llama_sampler_
     struct llama_sampler *sampler = llama_sampler_init(sparams);
     if (!sampler) {
         std::cerr << "LlmEngine::predict: Failed to initialize sampler." << std::endl;
@@ -204,27 +203,24 @@ std::string LlmEngine::predict(const std::string& user_prompt,
     }
 
     for (int i = 0; i < n_prompt_tokens; ++i) {
-        // Correção assinatura llama_sampler_accept (sampler, token_id)
         llama_sampler_accept(sampler, prompt_tokens_vec[i]);
     }
 
-    batch.n_tokens = 0; // Limpar batch para geração
+    batch.n_tokens = 0;
 
     while (n_cur < current_n_ctx && n_decoded < max_tokens_to_generate) {
-        // Correção assinatura llama_sampler_sample (sampler, context, idx)
         llama_token new_token_id = llama_sampler_sample(sampler, ctx_, 0);
 
-        // Correção assinatura llama_sampler_accept
         llama_sampler_accept(sampler, new_token_id);
 
-        // Correção EOS token: usar llama_model_token_eos
-        if (new_token_id == llama_model_token_eos(model_)) {
+        // Correção EOS token
+        if (new_token_id == llama_token_eos(model_)) {
             break;
         }
 
         char piece_buffer[64];
-        // Correção token to piece/str: usar llama_model_token_to_str
-        int len = llama_model_token_to_str(model_, new_token_id, piece_buffer, sizeof(piece_buffer));
+        // Correção token to piece
+        int len = llama_token_to_piece(model_, new_token_id, piece_buffer, sizeof(piece_buffer));
 
         if (len > 0) {
             result_text.append(piece_buffer, len);
@@ -247,7 +243,7 @@ std::string LlmEngine::predict(const std::string& user_prompt,
                 }
             }
         } else if (len < 0) {
-            std::cerr << "LlmEngine::predict: llama_model_token_to_str failed for token " << new_token_id << ". Returned: " << len << std::endl;
+            std::cerr << "LlmEngine::predict: llama_token_to_piece failed for token " << new_token_id << ". Returned: " << len << std::endl;
         }
 
         batch.n_tokens = 0;
