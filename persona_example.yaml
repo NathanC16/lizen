@@ -1,0 +1,38 @@
+# Exemplo de Configuração de Persona/Modelo em formato YAML
+
+# Nome descritivo da persona/configuração (opcional, para referência)
+name: "Assistente Exemplo Conciso"
+
+# Caminho para o arquivo do modelo GGUF (obrigatório)
+# Substitua pelo caminho real para o seu modelo .gguf
+model_gguf_path: "./modelos/substitua_pelo_seu_modelo.gguf"
+
+# Configurações do Motor LLM e Contexto
+n_ctx: 2048                     # Tamanho do contexto.
+                                # Modelos diferentes têm limites diferentes. 0 pode usar o padrão do modelo.
+num_threads: 0                  # Número de threads para inferência.
+                                # 0 para usar a lógica automática do LlmEngine
+                                # (baseado nos núcleos da CPU, com um limite superior).
+
+# Prompt do Sistema (opcional)
+# Será prefixado ao prompt do usuário para guiar o comportamento do modelo.
+system_prompt: "Você é um assistente de IA focado em fornecer respostas curtas e diretas."
+
+# Parâmetros de Amostragem para Geração de Texto
+# NOTA: A lógica de amostragem avançada no LlmEngine ainda está simplificada (usa greedy manual).
+# Estes parâmetros são incluídos para compatibilidade futura e para quando a amostragem
+# avançada for restaurada.
+max_tokens: 128                 # Máximo de tokens a gerar por resposta.
+temperature: 0.7                # Controla a aleatoriedade. Valores mais baixos = mais determinístico.
+top_k: 40                       # Considera apenas os K tokens mais prováveis. 0 para desabilitar.
+top_p: 0.9                      # Amostragem Nucleus: considera tokens até a soma de suas probabilidades atingir P.
+repeat_penalty: 1.1             # Penaliza tokens que já apareceram recentemente. 1.0 para desabilitar.
+
+# --- Campos Futuros Possíveis (não implementados inicialmente) ---
+# description: "Um assistente que prefere respostas de uma linha."
+# author: "Seu Nome"
+# version: "1.0.0"
+# stop_sequences:
+#   - "\nUsuário:"
+#   - "FIM."
+# grammar_path: "" # Caminho para um arquivo de gramática GBNF, se aplicável.
