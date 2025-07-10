@@ -37,39 +37,57 @@ Este projeto visa ser uma alternativa ao Ollama, otimizado para inferência efic
     ```
     O executável principal será `build/bin/cpu_llm_project`.
 
-## Configuração (Arquivo `.env`)
+## Configuração (Arquivos YAML de Persona/Modelo)
 
-Opcionalmente, você pode criar um arquivo chamado `.env` na raiz do projeto para definir configurações padrão. Copie o arquivo `.env-example` para `.env` e ajuste os valores conforme necessário.
+Este projeto utiliza arquivos de configuração no formato YAML para definir "Personas" ou configurações específicas de modelos. Isso permite gerenciar diferentes modelos, system prompts, e parâmetros de amostragem de forma organizada.
 
-Variáveis suportadas no `.env`:
-*   `NUM_THREADS=0`           # Número de threads (0 = automático)
-*   `MODEL_N_CTX=2048`        # Tamanho do contexto
-*   `DEFAULT_MODEL_PATH=""`   # Caminho padrão do modelo (atualmente não usado para sobrescrever o argumento obrigatório)
-*   `MODEL_TEMPERATURE=0.8`   # Temperatura de amostragem
-*   `MODEL_TOP_K=40`          # Top-K
-*   `MODEL_TOP_P=0.9`         # Top-P
-*   `MODEL_REPEAT_PENALTY=1.1`# Penalidade de repetição
-*   `SYSTEM_PROMPT="Você é um assistente de IA prestativo e conciso."` # Prompt de sistema padrão
-*   `API_HOST="localhost"`    # Host padrão para o servidor API
-*   `API_PORT=8080`         # Porta padrão para o servidor API
+**Estrutura do Arquivo YAML:**
+
+Um arquivo de configuração de persona (ex: `minha_persona.yaml`) deve seguir a estrutura abaixo. Veja `persona_example.yaml` para um exemplo completo.
+
+```yaml
+name: "Nome Descritivo da Persona"
+model_gguf_path: "/caminho/para/seu/modelo.gguf" # Obrigatório
+n_ctx: 2048
+num_threads: 0 # 0 para automático
+system_prompt: "Este é o prompt de sistema para esta persona."
+max_tokens: 256
+temperature: 0.7
+top_k: 40
+top_p: 0.9
+repeat_penalty: 1.1
+# api_host: "localhost" # Opcional, se esta persona tiver uma config de API específica
+# api_port: 8080      # Opcional
+```
+
+**Diretório Padrão de Personas:**
+
+Por padrão, ao usar a flag `--run <nome_da_persona>`, o programa procurará por `<nome_da_persona>.yaml` dentro de um diretório chamado `personas/` na raiz do projeto. Crie este diretório se ele não existir e coloque seus arquivos YAML de persona lá.
 
 **Prioridade das Configurações:**
 1.  Argumentos de linha de comando (têm a maior prioridade).
-2.  Variáveis definidas no arquivo `.env`.
+2.  Valores definidos no arquivo YAML da persona/modelo carregado.
 3.  Valores padrão definidos no código.
+
+(A funcionalidade de listar e criar personas via CLI (`--list`, `--create`) será adicionada em uma fase futura.)
 
 ## Como Executar
 
-O `cpu_llm_project` pode ser executado em dois modos principais: como um servidor API HTTP ou em modo interativo de linha de comando (CLI). Todos os argumentos de linha de comando após o caminho do modelo são opcionais e podem ser fornecidos como flags nomeadas.
+O `cpu_llm_project` pode ser executado de várias maneiras, dependendo de como você deseja carregar o modelo e suas configurações.
 
-**Argumentos de Linha de Comando:**
+**Argumentos de Linha de Comando Principais:**
 
-*   `<caminho_para_modelo.gguf>`: **Obrigatório.** O primeiro argumento posicional deve ser o caminho para o arquivo do modelo GGUF.
-*   `--host <hostname>`: Define o host para o servidor API. Sobrescreve `API_HOST` do `.env`.
-*   `--port <numero_porta>`: Define a porta para o servidor API. Sobrescreve `API_PORT` do `.env`.
-*   `--n_ctx <numero>`: Define o tamanho do contexto. Sobrescreve `MODEL_N_CTX` do `.env`.
-*   `--threads <numero>`: Define o número de threads. Sobrescreve `NUM_THREADS` do `.env`.
-*   `--interactive`: Força o modo interativo CLI. Tem prioridade sobre as flags de servidor.
+*   **Especificador do Modelo/Configuração (um dos seguintes é obrigatório):**
+    *   `<caminho_para_config.yaml>`: Caminho direto para um arquivo YAML de configuração de persona/modelo.
+    *   `--run <nome_da_persona>`: Carrega a persona `<nome_da_persona>.yaml` do diretório padrão `personas/`.
+    *   `<caminho_para_modelo.gguf>`: (Comportamento legado) Caminho direto para um arquivo GGUF. Neste caso, são usados parâmetros padrão para system prompt, amostragem, etc., que podem ser sobrescritos por outras flags.
+
+*   **Flags Opcionais (sobrescrevem valores do YAML ou defaults):**
+    *   `--host <hostname>`: Define o host para o servidor API.
+    *   `--port <numero_porta>`: Define a porta para o servidor API.
+    *   `--n_ctx <numero>`: Define o tamanho do contexto.
+    *   `--threads <numero>`: Define o número de threads (0 para automático).
+    *   `--interactive`: Força o modo interativo CLI. Tem prioridade sobre as flags de servidor.
 
 ### Modo Servidor API
 

@@ -60,6 +60,7 @@ target_link_libraries(${PROJECT_NAME}
         cpu_llm_lib         # Nossa biblioteca principal com LlmEngine
         httplib::httplib    # Target do cpp-httplib (se existir) - cpp-httplib geralmente é header-only
         nlohmann_json::nlohmann_json # Target do nlohmann/json
+        yaml-cpp            # Target do yaml-cpp (geralmente é yaml-cpp ou YAML_CPP::yaml-cpp)
         ${CMAKE_THREAD_LIBS_INIT} # Linkar com bibliotecas de thread
 )
 # Para cpp-httplib, se for header-only e não criar um target linkável 'httplib::httplib',
@@ -152,6 +153,19 @@ FetchContent_Declare(
 )
 # nlohmann/json é header-only. FetchContent_MakeAvailable geralmente cria um target INTERFACE.
 FetchContent_MakeAvailable(nlohmann_json)
+
+# --- Adicionar yaml-cpp como dependência (para arquivos de configuração YAML) ---
+FetchContent_Declare(
+  yaml_cpp
+  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+  GIT_TAG        0.8.0 # Usar uma tag de release estável - CORRIGIDO
+  GIT_SHALLOW    TRUE
+)
+# Opções para yaml-cpp (geralmente não são necessárias muitas customizações para uso básico)
+# set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+# set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+# set(YAML_CPP_INSTALL OFF CACHE BOOL "" FORCE) # Não precisamos instalar, apenas usar no build
+FetchContent_MakeAvailable(yaml_cpp)
 
 
 # --- Adicionar subdiretório de testes ---
