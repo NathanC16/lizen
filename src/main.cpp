@@ -117,11 +117,41 @@ int main(int argc, char* argv[]) {
     int port = 8080;
     int n_ctx = 2048; // Tamanho do contexto padrão
 
-    // Analisar argumentos para host, porta e n_ctx (simplificado)
-    // Ex: ./cpu_llm_project <model_path> [host] [port] [n_ctx]
-    if (argc > 2) host = argv[2];
-    if (argc > 3) port = std::stoi(argv[3]);
-    if (argc > 4) n_ctx = std::stoi(argv[4]);
+    // Analisar argumentos para host, porta e n_ctx
+    bool run_server_mode = false; // Flag para determinar se devemos rodar o servidor
+
+    if (argc > 2) { // Se houver argumentos além do caminho do modelo
+        // O primeiro argumento extra pode ser o host ou uma flag como --interactive
+        std::string first_extra_arg = argv[2];
+        if (first_extra_arg == "--interactive") {
+            // Modo interativo solicitado, não rodar servidor
+            run_server_mode = false;
+        } else {
+            // Assumir que é o host para o modo servidor
+            host = first_extra_arg;
+            run_server_mode = true; // Potencialmente rodar servidor
+            if (argc > 3) {
+                try {
+                    port = std::stoi(argv[3]);
+                } catch (const std::invalid_argument& ia) {
+                    std::cerr << "Aviso: Argumento de porta inválido '" << argv[3] << "'. Usando porta padrão: " << port << std::endl;
+                } catch (const std::out_of_range& oor) {
+                    std::cerr << "Aviso: Argumento de porta fora do intervalo '" << argv[3] << "'. Usando porta padrão: " << port << std::endl;
+                }
+            }
+            if (argc > 4) {
+                try {
+                    n_ctx = std::stoi(argv[4]);
+                } catch (const std::invalid_argument& ia) {
+                    std::cerr << "Aviso: Argumento n_ctx inválido '" << argv[4] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                } catch (const std::out_of_range& oor) {
+                    std::cerr << "Aviso: Argumento n_ctx fora do intervalo '" << argv[4] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                }
+            }
+        }
+    }
+    // Se argc == 2 (apenas ./programa <modelo>), implicitamente não é modo servidor, pode ser interativo por padrão.
+    // Se run_server_mode não foi explicitamente setado para true, não rodaremos o servidor.
 
 
     cpu_llm_project::LlmEngine engine;
@@ -131,19 +161,46 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "Modelo " << model_path << " carregado com sucesso no LlmEngine." << std::endl;
 
-    // Iniciar o servidor API
-    cpu_llm_project::ApiServer server(engine, host, port);
+    if (run_server_mode) {
+        // Iniciar o servidor API
+        cpu_llm_project::ApiServer server(engine, host, port);
+        std::cout << "Iniciando servidor API em " << host << ":" << port << std::endl;
 
-    // Adicionar um handler de sinal para parar o servidor graciosamente (opcional, mas bom para Ctrl+C)
-    // std::signal(SIGINT, [](int signal){ server.stop(); }); // Precisa que 'server' seja acessível
-    // Por enquanto, o servidor bloqueará e será interrompido com Ctrl+C (ou stop() chamado de outro lugar)
+        // Adicionar um handler de sinal para parar o servidor graciosamente (opcional, mas bom para Ctrl+C)
+        // std::signal(SIGINT, [](int signal){ server.stop(); }); // Precisa que 'server' seja acessível
 
-    if (!server.start()) { // start() agora é bloqueante
-        std::cerr << "Erro fatal: Falha ao iniciar o servidor API." << std::endl;
-        return 1;
+        if (!server.start()) { // start() agora é bloqueante
+            std::cerr << "Erro fatal: Falha ao iniciar o servidor API." << std::endl;
+            return 1;
+        }
+        std::cout << "CPU LLM Project - Servidor API encerrado." << std::endl;
+    } else {
+        // Entrar em modo interativo
+        std::cout << "\nModo Interativo. Digite 'sair', 'exit' ou 'quit' para terminar." << std::endl;
+        std::string line;
+        while (true) {
+            std::cout << "\nPrompt: ";
+            if (!std::getline(std::cin, line)) {
+                // EOF (Ctrl+D) ou erro de leitura
+                break;
+            }
+
+            if (line == "sair" || line == "exit" || line == "quit") {
+                break;
+            }
+
+            if (line.empty()) {
+                continue;
+            }
+
+            std::cout << "Processando..." << std::endl;
+            // Usar parâmetros padrão para a predição no modo interativo por enquanto
+            // A função predict atualmente retorna uma mensagem estática.
+            std::string response = engine.predict(line);
+            std::cout << "Resposta: " << response << std::endl;
+        }
+        std::cout << "CPU LLM Project - Modo interativo encerrado." << std::endl;
     }
 
-    // O servidor parou (ou falhou ao iniciar)
-    std::cout << "CPU LLM Project - Servidor API encerrado." << std::endl;
     return 0;
 }
