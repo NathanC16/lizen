@@ -37,10 +37,15 @@ Este projeto visa ser uma alternativa ao Ollama, otimizado para inferência efic
     ```
     O executável principal será `build/bin/cpu_llm_project`.
 
-## Como Executar o Servidor API
+## Como Executar
 
-Após a compilação, você pode iniciar o servidor API:
+O `cpu_llm_project` pode ser executado em dois modos principais: como um servidor API HTTP ou em modo interativo de linha de comando (CLI).
 
+### Modo Servidor API
+
+Este modo inicia um servidor HTTP que expõe endpoints para interagir com o modelo LLM.
+
+**Comando:**
 ```bash
 ./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf [host] [porta] [n_ctx]
 ```
@@ -53,8 +58,45 @@ Após a compilação, você pode iniciar o servidor API:
 ```bash
 ./build/bin/cpu_llm_project ./models/phi-2.Q4_K_M.gguf localhost 8080
 ```
+O servidor começará a escutar em `http://localhost:8080` (ou no host/porta especificados). Consulte a seção "Como Usar a API" para detalhes sobre os endpoints.
 
-O servidor começará a escutar em `http://localhost:8080` (ou no host/porta especificados).
+### Modo Interativo (CLI)
+
+Este modo permite que você converse diretamente com o modelo através da linha de comando.
+
+**Como Iniciar:**
+
+Existem duas maneiras de iniciar o modo interativo:
+
+1.  **Padrão (sem argumentos de servidor):** Se você fornecer apenas o caminho do modelo, o programa iniciará em modo interativo por padrão.
+    ```bash
+    ./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf
+    ```
+
+2.  **Flag Explícita:** Você pode usar a flag `--interactive`.
+    ```bash
+    ./build/bin/cpu_llm_project /caminho/para/seu/modelo.gguf --interactive
+    ```
+    *   Neste caso, quaisquer argumentos de `[host]`, `[porta]` ou `[n_ctx]` que possam seguir a flag `--interactive` serão ignorados.
+
+**Como Usar:**
+
+Após iniciar, você verá uma mensagem de boas-vindas e um prompt `Prompt: `.
+```
+CPU LLM Project - Início
+Info: Suporte a AVX detectado em tempo de execução.
+[...]
+Modelo /caminho/para/seu/modelo.gguf carregado com sucesso no LlmEngine.
+
+Modo Interativo. Digite 'sair', 'exit' ou 'quit' para terminar.
+
+Prompt:
+```
+*   Digite seu prompt e pressione Enter.
+*   Para sair, digite `sair`, `exit`, ou `quit` e pressione Enter, ou pressione `Ctrl+D` (EOF).
+
+**Nota sobre a Geração de Texto:**
+Atualmente, a funcionalidade de geração de texto no `LlmEngine` está simplificada para garantir a compilação do projeto (devido a desafios com a API `llama.cpp`). No modo interativo, a "resposta" do modelo será uma mensagem informativa estática: `[INFO: Text generation loop disabled for compilation. Processed prompt.]`. A restauração da capacidade completa de geração de texto e amostragem avançada é um trabalho futuro.
 
 ## Como Usar a API
 
