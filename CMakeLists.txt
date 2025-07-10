@@ -174,15 +174,15 @@ message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}") # Debug, Release, etc.
 # Opcional: Habilitar checagem de AVX em tempo de compilação (simples)
 # Isso não garante que o código *use* AVX, apenas que o compilador o suporta.
 # Uma verificação em tempo de execução no código C++ seria mais robusta.
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    execute_process(
-        COMMAND ${CMAKE_CXX_COMPILER} -mavx -dM -E - < /dev/null
-        OUTPUT_VARIABLE COMPILER_DEFINES
-        RESULT_VARIABLE COMPILER_DEFINES_RESULT
-    )
-    if(COMPILER_DEFINES_RESULT EQUAL 0 AND COMPILER_DEFINES MATCHES ".*__AVX__.*")
-        message(STATUS "AVX support detected in compiler.")
-    else()
-        message(WARNING "AVX support flag (-mavx) might not be effective or supported by the compiler.")
-    endif()
-endif()
+# if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+#     execute_process(
+#         COMMAND ${CMAKE_CXX_COMPILER} -mavx -dM -E - < /dev/null
+#         OUTPUT_VARIABLE COMPILER_DEFINES
+#         RESULT_VARIABLE COMPILER_DEFINES_RESULT
+#     )
+#     if(COMPILER_DEFINES_RESULT EQUAL 0 AND COMPILER_DEFINES MATCHES ".*__AVX__.*")
+#         message(STATUS "AVX support detected in compiler.")
+#     else()
+#         message(WARNING "AVX support flag (-mavx) might not be effective or supported by the compiler.")
+#     endif()
+# endif()
