@@ -296,4 +296,3 @@ std::string LlmEngine::predict(const std::string& user_prompt,
 }
 
 } // namespace cpu_llm_project
->>>>>>> REPLACE
