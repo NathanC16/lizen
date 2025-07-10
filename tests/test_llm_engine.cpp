@@ -91,7 +91,8 @@ TEST_CASE("LlmEngine Prediction Logic (without full model load)", "[llm_engine]"
     cpu_llm_project::LlmEngine engine;
 
     SECTION("Predict without a loaded model") {
-        std::string result = engine.predict("Hello", 10);
+        // Passar system_prompt vazio e usar valores padrão para outros params de amostragem
+        std::string result = engine.predict("Hello", "", 10);
         INFO("Result: " << result); // Para debug, se o teste falhar
         REQUIRE(result.rfind("[Error: Model not loaded]", 0) == 0); // Verifica se começa com a msg de erro
     }

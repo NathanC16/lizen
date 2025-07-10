@@ -37,17 +37,39 @@ Este projeto visa ser uma alternativa ao Ollama, otimizado para inferência efic
     ```
     O executável principal será `build/bin/cpu_llm_project`.
 
+## Configuração (Arquivo `.env`)
+
+Opcionalmente, você pode criar um arquivo chamado `.env` na raiz do projeto para definir configurações padrão. Copie o arquivo `.env-example` para `.env` e ajuste os valores conforme necessário.
+
+Variáveis suportadas no `.env`:
+*   `NUM_THREADS=0`           # Número de threads (0 = automático)
+*   `MODEL_N_CTX=2048`        # Tamanho do contexto
+*   `DEFAULT_MODEL_PATH=""`   # Caminho padrão do modelo (atualmente não usado para sobrescrever o argumento obrigatório)
+*   `MODEL_TEMPERATURE=0.8`   # Temperatura de amostragem
+*   `MODEL_TOP_K=40`          # Top-K
+*   `MODEL_TOP_P=0.9`         # Top-P
+*   `MODEL_REPEAT_PENALTY=1.1`# Penalidade de repetição
+*   `SYSTEM_PROMPT="Você é um assistente de IA prestativo e conciso."` # Prompt de sistema padrão
+*   `API_HOST="localhost"`    # Host padrão para o servidor API
+*   `API_PORT=8080`         # Porta padrão para o servidor API
+
+**Prioridade das Configurações:**
+1.  Argumentos de linha de comando (têm a maior prioridade).
+2.  Variáveis definidas no arquivo `.env`.
+3.  Valores padrão definidos no código.
+
 ## Como Executar
 
 O `cpu_llm_project` pode ser executado em dois modos principais: como um servidor API HTTP ou em modo interativo de linha de comando (CLI). Todos os argumentos de linha de comando após o caminho do modelo são opcionais e podem ser fornecidos como flags nomeadas.
 
-**Argumentos Comuns (Opcionais):**
+**Argumentos de Linha de Comando:**
 
-*   `--host <hostname>`: Define o host para o servidor API (padrão: `localhost`). Usado apenas no modo servidor.
-*   `--port <numero_porta>`: Define a porta para o servidor API (padrão: `8080`). Usado apenas no modo servidor.
-*   `--n_ctx <numero>`: Define o tamanho do contexto para o modelo (padrão: `2048`).
-*   `--threads <numero>`: Define o número de threads que o motor LLM deve usar (padrão: automático, baseado nos núcleos da CPU com um limite superior). Um valor `<= 0` usa o padrão.
-*   `--interactive`: Força o programa a iniciar em modo interativo CLI, mesmo que argumentos de host/porta sejam fornecidos.
+*   `<caminho_para_modelo.gguf>`: **Obrigatório.** O primeiro argumento posicional deve ser o caminho para o arquivo do modelo GGUF.
+*   `--host <hostname>`: Define o host para o servidor API. Sobrescreve `API_HOST` do `.env`.
+*   `--port <numero_porta>`: Define a porta para o servidor API. Sobrescreve `API_PORT` do `.env`.
+*   `--n_ctx <numero>`: Define o tamanho do contexto. Sobrescreve `MODEL_N_CTX` do `.env`.
+*   `--threads <numero>`: Define o número de threads. Sobrescreve `NUM_THREADS` do `.env`.
+*   `--interactive`: Força o modo interativo CLI. Tem prioridade sobre as flags de servidor.
 
 ### Modo Servidor API
 
@@ -101,12 +123,13 @@ Info: Suporte a AVX detectado em tempo de execução.
 [...]
 Modelo /caminho/para/seu/modelo.gguf carregado com sucesso no LlmEngine.
 
-Modo Interativo. Digite 'sair', 'exit' ou 'quit' para terminar.
+Modo Interativo. Digite '//sair', '//exit' ou '//quit' para terminar.
 
 Prompt:
 ```
 *   Digite seu prompt e pressione Enter.
-*   Para sair, digite `sair`, `exit`, ou `quit` e pressione Enter, ou pressione `Ctrl+D` (EOF).
+*   Para executar comandos, use o prefixo `//`. Exemplo: `//sair`.
+*   Comandos de saída disponíveis: `//sair`, `//exit`, `//quit`. Você também pode usar `Ctrl+D` (EOF).
 
 **Nota sobre a Geração de Texto:**
 Atualmente, a funcionalidade de geração de texto no `LlmEngine` está simplificada para garantir a compilação do projeto (devido a desafios com a API `llama.cpp`). No modo interativo, a "resposta" do modelo será uma mensagem informativa estática: `[INFO: Text generation loop disabled for compilation. Processed prompt.]`. A restauração da capacidade completa de geração de texto e amostragem avançada é um trabalho futuro.
