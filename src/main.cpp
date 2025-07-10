@@ -112,61 +112,114 @@ int main(int argc, char* argv[]) {
     }
     model_file.close();
 
-    // Parâmetros de linha de comando para o servidor e modelo
+    // Parâmetros com valores padrão
     std::string host = "localhost";
     int port = 8080;
-    int n_ctx = 2048; // Tamanho do contexto padrão
+    int n_ctx = 2048;
+    int num_threads = 0; // 0 para LlmEngine usar lógica padrão (hardware_concurrency)
+    bool run_server_mode = false; // Por padrão, não roda o servidor (prefere interativo se poucos args)
+    bool interactive_flag_explicitly_passed = false;
 
-    // Analisar argumentos para host, porta e n_ctx
-    bool run_server_mode = false;
-    bool interactive_mode_requested = false;
-
-    // Primeiro, verificar se a flag --interactive está presente em qualquer lugar após o model_path
+    // Analisar argumentos da linha de comando
     for (int i = 2; i < argc; ++i) {
-        if (std::string(argv[i]) == "--interactive") {
-            interactive_mode_requested = true;
-            break;
-        }
-    }
-
-    if (interactive_mode_requested) {
-        run_server_mode = false;
-    } else {
-        // Se --interactive não foi passada, verificar se temos argumentos para o modo servidor
-        if (argc > 2) { // Pelo menos host é fornecido
-            host = argv[2]; // Assumir que argv[2] é o host
-            run_server_mode = true;
-
-            if (argc > 3) { // Porta fornecida
+        std::string arg = argv[i];
+        if (arg == "--interactive") {
+            interactive_flag_explicitly_passed = true;
+        } else if (arg == "--threads") {
+            if (i + 1 < argc) {
                 try {
-                    port = std::stoi(argv[3]);
-                } catch (const std::invalid_argument& ia) {
-                    std::cerr << "Aviso: Argumento de porta inválido '" << argv[3] << "'. Usando porta padrão: " << port << std::endl;
-                } catch (const std::out_of_range& oor) {
-                    std::cerr << "Aviso: Argumento de porta fora do intervalo '" << argv[3] << "'. Usando porta padrão: " << port << std::endl;
-                }
-            }
-            if (argc > 4) { // n_ctx fornecido
-                // Certificar-se de que argv[4] não é --interactive (embora já verificado acima, é uma dupla checagem)
-                if (std::string(argv[4]) != "--interactive") {
-                     try {
-                        n_ctx = std::stoi(argv[4]);
-                    } catch (const std::invalid_argument& ia) {
-                        std::cerr << "Aviso: Argumento n_ctx inválido '" << argv[4] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
-                    } catch (const std::out_of_range& oor) {
-                        std::cerr << "Aviso: Argumento n_ctx fora do intervalo '" << argv[4] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                    num_threads = std::stoi(argv[++i]);
+                    if (num_threads <= 0) {
+                         std::cerr << "Aviso: Número de threads deve ser positivo. Usando padrão." << std::endl;
+                         num_threads = 0; // Reseta para padrão do engine
                     }
+                } catch (const std::invalid_argument& ia) {
+                    std::cerr << "Aviso: Argumento de threads inválido '" << argv[i] << "'. Usando padrão." << std::endl;
+                    num_threads = 0;
+                } catch (const std::out_of_range& oor) {
+                    std::cerr << "Aviso: Argumento de threads fora do intervalo '" << argv[i] << "'. Usando padrão." << std::endl;
+                    num_threads = 0;
                 }
+            } else {
+                std::cerr << "Aviso: Flag --threads requer um argumento numérico." << std::endl;
+            }
+        } else if (arg == "--host") {
+            if (i + 1 < argc) {
+                host = argv[++i];
+                run_server_mode = true; // Se --host é passado, provavelmente queremos modo servidor
+            } else {
+                std::cerr << "Aviso: Flag --host requer um argumento." << std::endl;
+            }
+        } else if (arg == "--port") {
+            if (i + 1 < argc) {
+                try {
+                    port = std::stoi(argv[++i]);
+                } catch (const std::invalid_argument& ia) {
+                    std::cerr << "Aviso: Argumento de porta inválido '" << argv[i] << "'. Usando porta padrão: " << port << std::endl;
+                } catch (const std::out_of_range& oor) {
+                    std::cerr << "Aviso: Argumento de porta fora do intervalo '" << argv[i] << "'. Usando porta padrão: " << port << std::endl;
+                }
+                run_server_mode = true; // Se --port é passado, provavelmente queremos modo servidor
+            } else {
+                std::cerr << "Aviso: Flag --port requer um argumento numérico." << std::endl;
+            }
+        } else if (arg == "--n_ctx") {
+            if (i + 1 < argc) {
+                try {
+                    n_ctx = std::stoi(argv[++i]);
+                     if (n_ctx <= 0) {
+                         std::cerr << "Aviso: Número de n_ctx deve ser positivo. Usando padrão: " << 2048 << std::endl;
+                         n_ctx = 2048;
+                    }
+                } catch (const std::invalid_argument& ia) {
+                    std::cerr << "Aviso: Argumento n_ctx inválido '" << argv[i] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                } catch (const std::out_of_range& oor) {
+                    std::cerr << "Aviso: Argumento n_ctx fora do intervalo '" << argv[i] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                }
+            } else {
+                std::cerr << "Aviso: Flag --n_ctx requer um argumento numérico." << std::endl;
             }
         } else {
-            // argc == 2 (apenas ./programa <modelo>), modo interativo por padrão
-            run_server_mode = false;
+            // Se não for uma flag conhecida, e ainda não definimos o host (assumindo modo servidor posicional)
+            // Esta lógica posicional é um pouco frágil se misturada com flags nomeadas extensivamente.
+            // Por simplicidade, se --host, --port não foram usados, os primeiros args extras ainda podem ser host e port.
+            if (i == 2 && !interactive_flag_explicitly_passed) { // Potencialmente o host
+                host = arg;
+                run_server_mode = true;
+            } else if (i == 3 && run_server_mode && !interactive_flag_explicitly_passed) { // Potencialmente a porta
+                 try {
+                    port = std::stoi(arg);
+                } catch (const std::invalid_argument& ia) {
+                    std::cerr << "Aviso: Argumento de porta posicional inválido '" << arg << "'. Usando porta padrão: " << port << std::endl;
+                } catch (const std::out_of_range& oor) {
+                    std::cerr << "Aviso: Argumento de porta posicional fora do intervalo '" << arg << "'. Usando porta padrão: " << port << std::endl;
+                }
+            } else if (i == 4 && run_server_mode && !interactive_flag_explicitly_passed) { // Potencialmente n_ctx
+                 try {
+                    n_ctx = std::stoi(arg);
+                } catch (const std::invalid_argument& ia) {
+                    std::cerr << "Aviso: Argumento n_ctx posicional inválido '" << arg << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                } catch (const std::out_of_range& oor) {
+                    std::cerr << "Aviso: Argumento n_ctx posicional fora do intervalo '" << arg << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                }
+            } else if (arg.rfind("-", 0) == 0) { // Começa com '-' ou '--' mas não é uma flag conhecida
+                 std::cerr << "Aviso: Flag desconhecida '" << arg << "' ignorada." << std::endl;
+            }
         }
     }
 
+    // Decisão final sobre o modo: --interactive tem prioridade máxima.
+    // Se não, e nenhum argumento de servidor foi inferido/passado, modo interativo.
+    if (interactive_flag_explicitly_passed) {
+        run_server_mode = false;
+    } else if (argc == 2) { // Somente ./programa <modelo>
+        run_server_mode = false; // Modo interativo por padrão
+    }
+    // Se run_server_mode foi setado para true por flags como --host ou argumentos posicionais, ele permanece true.
 
     cpu_llm_project::LlmEngine engine;
-    if (!engine.load_model(model_path, n_ctx, 0)) {
+    // Passar num_threads para load_model. LlmEngine tratará 0 como "automático".
+    if (!engine.load_model(model_path, n_ctx, 0, num_threads)) { // Adicionado num_threads
         std::cerr << "Erro fatal: Não foi possível carregar o modelo: " << model_path << std::endl;
         return 1;
     }

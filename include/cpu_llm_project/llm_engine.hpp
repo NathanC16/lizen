@@ -23,7 +23,8 @@ public:
 
     // Retorna true se o modelo foi carregado com sucesso, false caso contrário.
     // n_gpu_layers é incluído para compatibilidade com a API do llama.cpp, mas será 0 para CPU.
-    bool load_model(const std::string& model_path, int n_ctx = 2048, int n_gpu_layers = 0);
+    // num_threads = 0 indica para usar a lógica padrão (hardware_concurrency com limite).
+    bool load_model(const std::string& model_path, int n_ctx = 2048, int n_gpu_layers = 0, int num_threads = 0);
     void unload_model();
 
     // Gera texto a partir de um prompt.
