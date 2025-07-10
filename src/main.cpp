@@ -118,19 +118,26 @@ int main(int argc, char* argv[]) {
     int n_ctx = 2048; // Tamanho do contexto padrão
 
     // Analisar argumentos para host, porta e n_ctx
-    bool run_server_mode = false; // Flag para determinar se devemos rodar o servidor
+    bool run_server_mode = false;
+    bool interactive_mode_requested = false;
 
-    if (argc > 2) { // Se houver argumentos além do caminho do modelo
-        // O primeiro argumento extra pode ser o host ou uma flag como --interactive
-        std::string first_extra_arg = argv[2];
-        if (first_extra_arg == "--interactive") {
-            // Modo interativo solicitado, não rodar servidor
-            run_server_mode = false;
-        } else {
-            // Assumir que é o host para o modo servidor
-            host = first_extra_arg;
-            run_server_mode = true; // Potencialmente rodar servidor
-            if (argc > 3) {
+    // Primeiro, verificar se a flag --interactive está presente em qualquer lugar após o model_path
+    for (int i = 2; i < argc; ++i) {
+        if (std::string(argv[i]) == "--interactive") {
+            interactive_mode_requested = true;
+            break;
+        }
+    }
+
+    if (interactive_mode_requested) {
+        run_server_mode = false;
+    } else {
+        // Se --interactive não foi passada, verificar se temos argumentos para o modo servidor
+        if (argc > 2) { // Pelo menos host é fornecido
+            host = argv[2]; // Assumir que argv[2] é o host
+            run_server_mode = true;
+
+            if (argc > 3) { // Porta fornecida
                 try {
                     port = std::stoi(argv[3]);
                 } catch (const std::invalid_argument& ia) {
@@ -139,19 +146,23 @@ int main(int argc, char* argv[]) {
                     std::cerr << "Aviso: Argumento de porta fora do intervalo '" << argv[3] << "'. Usando porta padrão: " << port << std::endl;
                 }
             }
-            if (argc > 4) {
-                try {
-                    n_ctx = std::stoi(argv[4]);
-                } catch (const std::invalid_argument& ia) {
-                    std::cerr << "Aviso: Argumento n_ctx inválido '" << argv[4] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
-                } catch (const std::out_of_range& oor) {
-                    std::cerr << "Aviso: Argumento n_ctx fora do intervalo '" << argv[4] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+            if (argc > 4) { // n_ctx fornecido
+                // Certificar-se de que argv[4] não é --interactive (embora já verificado acima, é uma dupla checagem)
+                if (std::string(argv[4]) != "--interactive") {
+                     try {
+                        n_ctx = std::stoi(argv[4]);
+                    } catch (const std::invalid_argument& ia) {
+                        std::cerr << "Aviso: Argumento n_ctx inválido '" << argv[4] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                    } catch (const std::out_of_range& oor) {
+                        std::cerr << "Aviso: Argumento n_ctx fora do intervalo '" << argv[4] << "'. Usando n_ctx padrão: " << n_ctx << std::endl;
+                    }
                 }
             }
+        } else {
+            // argc == 2 (apenas ./programa <modelo>), modo interativo por padrão
+            run_server_mode = false;
         }
     }
-    // Se argc == 2 (apenas ./programa <modelo>), implicitamente não é modo servidor, pode ser interativo por padrão.
-    // Se run_server_mode não foi explicitamente setado para true, não rodaremos o servidor.
 
 
     cpu_llm_project::LlmEngine engine;
