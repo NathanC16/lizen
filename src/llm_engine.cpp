@@ -191,8 +191,105 @@ std::string LlmEngine::predict(const std::string& prompt_text, int max_tokens_to
     // }
     // std::cout << "Processed prompt: " << processed_prompt_text << std::endl;
 
+    std::string result_text = "";
+    int n_cur = batch.n_tokens; // n_cur é a posição atual na sequência
+    int n_decoded = 0;
+
+    // Histórico de tokens para penalidades
+    std::vector<llama_token> penalty_tokens;
+    penalty_tokens.reserve(current_n_ctx);
+    for(int i = 0; i < n_prompt_tokens; ++i) {
+        penalty_tokens.push_back(prompt_tokens_vec[i]);
+    }
+    const size_t penalty_max_size = current_n_ctx > 0 ? (size_t)current_n_ctx : 512;
+
+    const int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(model_));
+
+    while (n_cur < current_n_ctx && n_decoded < max_tokens_to_generate) {
+        float *logits = llama_get_logits_ith(ctx_, batch.n_tokens - 1);
+
+        std::vector<llama_token_data> candidates_vec_loop;
+        candidates_vec_loop.reserve(n_vocab);
+        for (llama_token token_id = 0; token_id < n_vocab; ++token_id) {
+            candidates_vec_loop.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
+        }
+        llama_token_data_array candidates_p = { candidates_vec_loop.data(), candidates_vec_loop.size(), false };
+
+        // Amostragem Manual (Max Logit) para garantir a compilação
+        llama_token new_token_id = candidates_p.data[0].id;
+        float max_logit = candidates_p.data[0].logit;
+        if (candidates_p.size > 0) { // Certificar que candidates_p.data não é nulo e size > 0
+            for (size_t i = 1; i < candidates_p.size; ++i) {
+                if (candidates_p.data[i].logit > max_logit) {
+                    max_logit = candidates_p.data[i].logit;
+                    new_token_id = candidates_p.data[i].id;
+                }
+            }
+        } else if (n_vocab > 0) { // Se não houver candidatos (improvável), mas n_vocab > 0
+             new_token_id = llama_token_eos(llama_model_get_vocab(model_)); // Fallback para EOS
+             std::cerr << "Aviso: Array de candidatos vazio, usando EOS como fallback." << std::endl;
+        } else { // Caso extremo: vocabulário vazio ou erro
+            std::cerr << "Erro: Vocabulário vazio ou candidates_p.data é nulo." << std::endl;
+            // Poderia lançar uma exceção ou retornar um erro aqui
+            // Por enquanto, apenas quebrar o loop pode ser o mais seguro se chegarmos aqui.
+            new_token_id = llama_token_eos(llama_model_get_vocab(model_));
+        }
+        // A chamada original para llama_sample_token_greedy foi removida.
+        // A lógica de amostragem completa está comentada abaixo para referência futura.
+        // if (!penalty_tokens.empty()) {
+        //      llama_sample_repetition_penalty(ctx_, &candidates_p,
+        //                                   penalty_tokens.data(),
+        //                                   penalty_tokens.size(),
+        //                                   repeat_penalty_param);
+        // }
+        // llama_sample_softmax(&candidates_p);
+        // llama_sample_top_k(&candidates_p, top_k_param <= 0 ? 0 : top_k_param, (size_t)1);
+        // llama_sample_top_p(&candidates_p, top_p_param, (size_t)1);
+        // llama_sample_temp(&candidates_p, temp_param);
+        // new_token_id = llama_sample_token(ctx_, &candidates_p);
+
+        penalty_tokens.push_back(new_token_id);
+        if (penalty_tokens.size() > penalty_max_size) {
+            penalty_tokens.erase(penalty_tokens.begin(), penalty_tokens.begin() + (penalty_tokens.size() - penalty_max_size));
+        }
+
+        if (new_token_id == llama_token_eos(llama_model_get_vocab(model_))) {
+            std::cout << " [EOS]" << std::endl;
+            break;
+        }
+
+        char piece_buffer[64];
+        int len = llama_token_to_piece(llama_model_get_vocab(model_), new_token_id, piece_buffer, sizeof(piece_buffer), 0, false);
+
+        if (len > 0) {
+            result_text.append(piece_buffer, len);
+            // std::cout << std::string(piece_buffer, len); // Imprimir token por token (opcional)
+            // fflush(stdout);
+        } else if (len < 0) {
+            std::cerr << "LlmEngine::predict: llama_token_to_piece failed for token " << new_token_id << ". Returned: " << len << std::endl;
+        }
+
+        batch.n_tokens = 0;
+        batch.token   [batch.n_tokens] = new_token_id;
+        batch.pos     [batch.n_tokens] = n_cur;
+        batch.n_seq_id[batch.n_tokens] = 1;
+        batch.seq_id  [batch.n_tokens][0] = 0;
+        batch.logits  [batch.n_tokens] = true;
+        batch.n_tokens++;
+
+        n_decoded++;
+        n_cur++;
+
+        if (llama_decode(ctx_, batch) != 0) {
+            std::cerr << "LlmEngine::predict: llama_decode failed for generated token " << new_token_id << std::endl;
+            llama_batch_free(batch);
+            return result_text + "[Error: llama_decode failed during generation]";
+        }
+    }
+
     llama_batch_free(batch);
-    return "[INFO: Text generation loop disabled for compilation. Processed prompt.]";
+    // return "[INFO: Text generation loop disabled for compilation. Processed prompt.]";
+    return result_text;
 }
 
 } // namespace cpu_llm_project
