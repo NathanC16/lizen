@@ -282,6 +282,30 @@ std::string LlmEngine::predict(const std::string& user_prompt,
             result_text.append(piece_buffer, len);
             // std::cout << std::string(piece_buffer, len); // Imprimir token por token (opcional)
             // fflush(stdout);
+
+            // Verificar sequências de parada
+            // Definir um tamanho mínimo para evitar verificações em strings muito curtas
+            const size_t min_len_for_stop_check = 6; // Ex: " USER:"
+            if (result_text.length() >= min_len_for_stop_check) {
+                const std::vector<std::string> stop_sequences = {
+                    "\nUSER:", "\nASSISTANT:", " USER:", " ASSISTANT:"
+                    // Adicionar "<|user|>", "<|assistant|>" ou outros tokens especiais se o modelo usar
+                };
+                bool stopped = false;
+                for (const auto& seq : stop_sequences) {
+                    if (result_text.rfind(seq) == result_text.length() - seq.length()) {
+                        std::cout << " [Stop sequence detected: '" << seq << "']" << std::endl;
+                        // Remover a sequência de parada da result_text
+                        result_text.erase(result_text.length() - seq.length());
+                        stopped = true;
+                        break;
+                    }
+                }
+                if (stopped) {
+                    break; // Sair do loop de geração
+                }
+            }
+
         } else if (len < 0) {
             std::cerr << "LlmEngine::predict: llama_token_to_piece failed for token " << new_token_id << ". Returned: " << len << std::endl;
         }
