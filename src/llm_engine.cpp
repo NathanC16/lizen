@@ -129,7 +129,7 @@ std::string LlmEngine::predict(const std::string& user_prompt,
     int n_prompt_tokens = llama_tokenize(
         model_, final_prompt_text.c_str(), (int32_t)final_prompt_text.length(),
         prompt_tokens_vec.data(), (int32_t)prompt_tokens_vec.size(),
-        llama_vocab_get_add_bos(llama_get_vocab(model_)),
+        llama_vocab_get_add_bos(llama_get_model_vocab(model_)),
         true
     );
 
@@ -138,7 +138,7 @@ std::string LlmEngine::predict(const std::string& user_prompt,
         n_prompt_tokens = llama_tokenize(
             model_, final_prompt_text.c_str(), (int32_t)final_prompt_text.length(),
             prompt_tokens_vec.data(), (int32_t)prompt_tokens_vec.size(),
-            llama_vocab_get_add_bos(llama_get_vocab(model_)), true
+            llama_vocab_get_add_bos(llama_get_model_vocab(model_)), true
         );
         if (n_prompt_tokens < 0) {
             std::cerr << "LlmEngine::predict: Failed to tokenize prompt (code " << n_prompt_tokens << ")." << std::endl;
