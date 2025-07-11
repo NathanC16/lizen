@@ -187,7 +187,7 @@ std::string LlmEngine::predict(const std::string& user_prompt,
     int n_cur = n_prompt_tokens;
     int n_decoded = 0;
 
-    llama_sampler_params sparams = llama_sampler_default_params();
+    llama_sampling_params sparams = llama_sampling_default_params(); // Corrected back from llama_sampler_params
     sparams.temp            = temp_param;
     sparams.top_k           = top_k_param <= 0 ? 0 : top_k_param;
     sparams.top_p           = top_p_param;
@@ -212,12 +212,12 @@ std::string LlmEngine::predict(const std::string& user_prompt,
 
         llama_sampler_accept(sampler, new_token_id);
 
-        if (new_token_id == llama_model_token_eos(model_)) {
+        if (new_token_id == llama_token_eos(model_)) { // Corrected EOS
             break;
         }
 
         char piece_buffer[64];
-        int len = llama_model_token_to_str(model_, new_token_id, piece_buffer, sizeof(piece_buffer));
+        int len = llama_token_to_piece(model_, new_token_id, piece_buffer, sizeof(piece_buffer)); // Corrected token to piece
 
         if (len > 0) {
             result_text.append(piece_buffer, len);
@@ -240,7 +240,7 @@ std::string LlmEngine::predict(const std::string& user_prompt,
                 }
             }
         } else if (len < 0) {
-            std::cerr << "LlmEngine::predict: llama_model_token_to_str failed for token " << new_token_id << ". Returned: " << len << std::endl;
+            std::cerr << "LlmEngine::predict: llama_token_to_piece failed for token " << new_token_id << ". Returned: " << len << std::endl;
         }
 
         batch.n_tokens = 0;
