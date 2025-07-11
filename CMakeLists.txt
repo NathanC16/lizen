@@ -125,6 +125,9 @@ set(LLAMA_F16C OFF CACHE BOOL "Disable F16C for llama.cpp" FORCE) # F16C é freq
 # set(LLAMA_ACCELERATE OFF CACHE BOOL "Disable Accelerate framework for llama.cpp" FORCE) # Manter comentado a menos que especificamente necessário
 # set(LLAMA_METAL OFF CACHE BOOL "Disable Metal for llama.cpp" FORCE) # Manter comentado a menos que especificamente necessário
 
+set(GGML_CCACHE OFF CACHE BOOL "Disable ccache for GGML" FORCE)
+
+
 FetchContent_MakeAvailable(llama_cpp)
 
 # --- Adicionar cpp-httplib como dependência (para o servidor HTTP) ---
